@@ -23,6 +23,11 @@ public final class CombatService {
     }
 
     public void fire(Session session, DataInputStream in) throws IOException {
+        Player player = session.player;
+        if (player != null && player.training) {
+            trainingFire(session, in);
+            return;
+        }
         LobbyService.Board board = boardOf(session);
         if (board == null || !board.fighting) {
             return;
@@ -39,6 +44,20 @@ public final class CombatService {
         int seat = session.player.seat;
         board.each(target -> PacketSender.fire(target, seat, type, x, y, angle, nShoot));
         advance(board);
+    }
+
+    private void trainingFire(Session session, DataInputStream in) throws IOException {
+        int type = in.readUnsignedByte();
+        int x = in.readShort();
+        int y = in.readShort();
+        int angle = in.readShort();
+        in.readUnsignedByte();
+        if (type == 17 || type == 19) {
+            in.readUnsignedByte();
+        }
+        int nShoot = in.readUnsignedByte();
+        PacketSender.fire(session, 0, type, x, y, angle, nShoot);
+        PacketSender.nextTurn(session, 0);
     }
 
     public void move(Session session, DataInputStream in) throws IOException {
@@ -88,6 +107,16 @@ public final class CombatService {
     public void tick(LobbyService.Board board) {
         if (!board.fighting) {
             return;
+        }
+        int seat = board.turnSeat;
+        if (seat >= 0 && seat < board.seats.length) {
+            Player turn = board.seats[seat];
+            if (turn != null && turn.bot && System.currentTimeMillis() - board.turnAt >= 1500L) {
+                int x = 80 + seat * 50;
+                board.each(target -> PacketSender.fire(target, seat, 0, x, 200, 45, 1));
+                advance(board);
+                return;
+            }
         }
         if (System.currentTimeMillis() - board.turnAt >= Database.TURN_SECONDS * 1000L) {
             advance(board);

@@ -14,6 +14,7 @@ public final class Session {
     public final Channel channel;
     public final Crypto crypto = new Crypto();
     public volatile boolean ready;
+    public boolean loginReady;
     public Player player;
 
     public Session(Channel channel) {

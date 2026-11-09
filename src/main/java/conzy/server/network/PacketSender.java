@@ -19,7 +19,8 @@ public final class PacketSender {
 
     public static void loginOk(Session session, Player player) {
         session.send(Cmd.LOGIN_OK, Bytes.out(out -> writeLogin(out, player)));
-        session.send(Cmd.TABLES, Bytes.out(PacketSender::writeEmptyTables));
+        session.send(Cmd.TABLES, Bytes.out(PacketSender::writeTables));
+        session.send(Cmd.TILE, Bytes.out(PacketSender::writeTiles));
     }
 
     public static void loginFail(Session session, String reason) {
@@ -28,6 +29,17 @@ public final class PacketSender {
 
     public static void message(Session session, String text) {
         session.send(Cmd.SERVER_MESSAGE, Bytes.out(out -> out.writeUTF(text)));
+    }
+
+    public static void info(Session session, String text) {
+        session.send(Cmd.SERVER_INFO, Bytes.out(out -> out.writeUTF(text)));
+    }
+
+    public static void balance(Session session, int xu, int luong) {
+        session.send(Cmd.UPDATE_MONEY, Bytes.out(out -> {
+            out.writeInt(xu);
+            out.writeInt(luong);
+        }));
     }
 
     public static void ping(Session session) {
@@ -170,6 +182,13 @@ public final class PacketSender {
         }));
     }
 
+    public static void chatTeam(Session session, String name, String text) {
+        session.send(Cmd.CHAT_TEAM, Bytes.out(out -> {
+            out.writeUTF(name);
+            out.writeUTF(text);
+        }));
+    }
+
     public static void gun(Session session, int id, int gun) {
         session.send(Cmd.CHOOSE_GUN, Bytes.out(out -> {
             out.writeInt(id);
@@ -237,24 +256,90 @@ public final class PacketSender {
         session.send(Cmd.MISSION, new byte[0]);
     }
 
-    public static void filePack(Session session, int type) {
-        byte[] body;
-        if (type == 2) {
-            body = fileBody(2, 1, Database.get().mapValues(), false);
+    public static void filePack(Session session, int type, int clientVersion) {
+        int version = 0;
+        byte[] data = null;
+        boolean wide = false;
+        if (type == 1) {
+            version = 18;
+            data = cache("icondata2");
+        } else if (type == 2) {
+            version = 19;
+            data = cache("valuesdata2");
+        } else if (type == 3) {
+            version = 15;
+            data = cache("playerdata2");
         } else if (type == 4) {
-            body = fileBody(4, 4, equipBlob(), true);
+            version = 22;
+            data = cache("equipdata2");
+            wide = true;
         } else if (type == 5) {
-            body = fileBody(5, 1, rankBlob(), false);
-        } else {
-            body = Bytes.out(out -> {
+            version = 17;
+            data = cache("levelCData2");
+        }
+        if (data == null) {
+            session.sendRawBody(Cmd.FILE, Bytes.out(out -> {
                 out.writeByte(type);
                 out.writeByte(0);
-            });
+            }));
+            return;
         }
-        session.sendRawBody(Cmd.FILE, body);
+        if (type != 1 && type != 5 && clientVersion == version) {
+            int same = version;
+            session.sendRawBody(Cmd.FILE, Bytes.out(out -> {
+                out.writeByte(type);
+                out.writeByte(same);
+            }));
+            return;
+        }
+        session.sendRawBody(Cmd.FILE, fileBody(type, version, data, wide));
+    }
+
+    public static void mapIcon(Session session, int id) {
+        byte[] png = mapPng(id);
+        if (png == null) {
+            return;
+        }
+        session.send(Cmd.MATERIAL, Bytes.out(out -> {
+            out.writeByte(2);
+            out.writeByte(id);
+            out.writeShort(png.length);
+            out.write(png);
+        }));
+    }
+
+    public static void trainingMap(Session session, int mapId) {
+        session.send(Cmd.TRAINING_MAP, Bytes.out(out -> out.writeByte(mapId)));
+    }
+
+    public static void trainingStart(Session session, Player player) {
+        session.send(Cmd.START, Bytes.out(out -> {
+            int gun = player.gun;
+            if (gun < 0 || gun > 9) {
+                gun = 0;
+            }
+            for (int i = 0; i < 5; i++) {
+                out.writeShort(player.equip[gun][i]);
+            }
+            out.writeByte(0);
+            out.writeByte(Database.TURN_SECONDS);
+            out.writeShort(0);
+            out.writeShort(230);
+            out.writeShort(200);
+            out.writeShort(player.maxHp);
+            out.writeShort(550);
+            out.writeShort(200);
+            out.writeShort(player.maxHp);
+            for (int i = 2; i < Database.SEATS; i++) {
+                out.writeShort(-1);
+            }
+        }));
     }
 
     public static void bigImage(Session session, int id) {
+        if (id == 9) {
+            session.loginReady = true;
+        }
         byte[] png = loadBigImage(id);
         session.sendRawBody(Cmd.BIG_IMAGE_HD, Bytes.out(out -> {
             out.writeByte(id);
@@ -335,12 +420,41 @@ public final class PacketSender {
                 out.writeByte(0);
             }
             out.writeByte(nShoot);
-            out.writeByte(1);
-            out.writeShort(1);
-            out.writeShort(x);
-            out.writeShort(y);
+            int paths = bulletPaths(type) * Math.max(nShoot, 1);
+            if (paths > 127) {
+                paths = 127;
+            }
+            out.writeByte(paths);
+            for (int i = 0; i < paths; i++) {
+                out.writeShort(1);
+                out.writeShort(x);
+                out.writeShort(y);
+            }
+            if (type == 48) {
+                out.writeByte(0);
+            }
             out.writeByte(0);
         }));
+    }
+
+    private static int bulletPaths(int type) {
+        // Slots BM.createBullet reads when critical is 0. Same point, not a trajectory.
+        if (type == 1) {
+            return 2;
+        }
+        if (type == 2) {
+            return 3;
+        }
+        if (type == 9) {
+            return 4;
+        }
+        if (type == 10) {
+            return 3;
+        }
+        if (type == 11) {
+            return 5;
+        }
+        return 1;
     }
 
     private static void writeLogin(DataOutputStream out, Player player) throws IOException {
@@ -373,11 +487,23 @@ public final class PacketSender {
         out.writeUTF("");
     }
 
-    private static void writeEmptyTables(DataOutputStream out) throws IOException {
-        out.writeByte(0);
-        out.writeByte(0);
-        out.writeByte(0);
-        out.writeByte(0);
+    private static void writeTables(DataOutputStream out) throws IOException {
+        // Wind, aim, bar and bullet count from the reference cache/msg/64.
+        // That file also says max 100, 10 boss maps and numb 12. This server has 8 seats, so those stay 8 and 0.
+        byte[] wind = {80, 50, 80, 40, 50, 30, 20, 10, 30, 40};
+        short[] angle = {-45, -45, -45, 30, 20, 30, -45, 1, -45, 20};
+        byte[] power = {28, 14, 10, 10, 12, 7, 23, 30, 11, 35};
+        byte[] number = {1, 2, 3, 4, 3, 5, 2, 1, 4, 1};
+        out.writeByte(wind.length);
+        out.write(wind);
+        out.writeByte(angle.length);
+        for (short value : angle) {
+            out.writeShort(value);
+        }
+        out.writeByte(power.length);
+        out.write(power);
+        out.writeByte(number.length);
+        out.write(number);
         out.writeByte(Database.SEATS);
         out.writeByte(0);
         out.writeByte(Database.SEATS);
@@ -441,31 +567,40 @@ public final class PacketSender {
         throw new IllegalStateException("missing res/equip/01.png");
     }
 
-    private static byte[] equipBlob() {
-        byte[] png = equipPng();
-        return Bytes.out(out -> {
-            out.writeByte(10);
-            for (int i = 0; i < 10; i++) {
-                out.writeByte(i);
-                out.writeShort(0);
-                out.writeByte(0);
-            }
-            out.writeShort(0);
-            for (int i = 0; i < 10; i++) {
-                out.writeShort(png.length);
-                out.write(png);
-            }
-        });
+    private static void writeTiles(DataOutputStream out) throws IOException {
+        short[] open = {8, 7, 15, 70, 71, 73, 74, 75, 77, 78, 79, 97};
+        out.writeShort(open.length);
+        for (short id : open) {
+            out.writeShort(id);
+        }
     }
 
-    private static byte[] rankBlob() {
-        return Bytes.out(out -> {
-            out.writeByte(Database.get().ranks().size());
-            for (String name : Database.get().ranks()) {
-                out.writeUTF(name);
-                out.writeByte(0);
+    private static byte[] cache(String name) {
+        Path path = Path.of("res", "cache", name);
+        try {
+            return Files.readAllBytes(path);
+        } catch (IOException e) {
+            throw new IllegalStateException("missing " + path.toAbsolutePath(), e);
+        }
+    }
+
+    private static byte[] mapPng(int id) {
+        Path path = Path.of("res", "icon", "map", id + ".png");
+        if (!Files.exists(path)) {
+            return null;
+        }
+        try {
+            byte[] png = Files.readAllBytes(path);
+            if (png.length < 8 || png.length > 32767) {
+                return null;
             }
-        });
+            if ((png[0] & 255) != 137 || png[1] != 80 || png[2] != 78 || png[3] != 71) {
+                return null;
+            }
+            return png;
+        } catch (IOException e) {
+            return null;
+        }
     }
 
     private static byte[] loadBigImage(int id) {

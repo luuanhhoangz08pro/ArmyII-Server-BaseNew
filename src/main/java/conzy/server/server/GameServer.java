@@ -3,6 +3,7 @@
  **/
 package conzy.server.server;
 
+import conzy.server.admin.AdminFrame;
 import conzy.server.database.Config;
 import conzy.server.database.Database;
 import conzy.server.database.PlayerDB;
@@ -25,6 +26,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
 
 public final class GameServer {
     private static final Logger LOG = Logger.getLogger("army2");
@@ -39,24 +42,25 @@ public final class GameServer {
     private NioEventLoopGroup worker;
     private Channel channel;
 
-    public static void main(String[] args) throws InterruptedException {
+    public static void main(String[] args) throws Exception {
+        UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
         Config config = Config.load(Path.of("config.ini"));
         int port = args.length > 0 ? Integer.parseInt(args[0]) : config.port;
         GameServer server = start(port);
+        SwingUtilities.invokeLater(() -> new AdminFrame(server).setVisible(true));
         Runtime.getRuntime().addShutdownHook(new Thread(server::shutdown));
-        server.channel.closeFuture().sync();
+        server.await();
     }
-
     public static GameServer start(int port) throws InterruptedException {
         if (Config.get() == null) {
             Config.load(Path.of("config.ini"));
         }
-        Database.get();
         try {
             PlayerDB.get().open(Config.get());
         } catch (SQLException e) {
             throw new IllegalStateException("MariaDB " + Config.get().dbHost + ":" + Config.get().dbPort, e);
         }
+        Database.get().load();
         LOG.info("database " + Config.get().dbName);
         GameServer server = new GameServer();
         server.boss = new NioEventLoopGroup(1);
@@ -93,6 +97,10 @@ public final class GameServer {
 
     public int port() {
         return ((InetSocketAddress) channel.localAddress()).getPort();
+    }
+
+    public void await() throws InterruptedException {
+        channel.closeFuture().sync();
     }
 
     public void shutdown() {

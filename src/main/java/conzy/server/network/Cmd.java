@@ -20,10 +20,12 @@ public final class Cmd {
     public static final int LEAVE = 14;
     public static final int READY = 16;
     public static final int SET_PASS = 18;
+    public static final int CHANGE_PASS = 81;
     public static final int SET_MONEY = 19;
     public static final int START = 20;
     public static final int MOVE = 21;
     public static final int FIRE = 22;
+    public static final int FIRE_TRAINING = 84;
     public static final int NEXT_TURN = 24;
     public static final int WIND = 25;
     public static final int USE_ITEM = 26;
@@ -35,6 +37,7 @@ public final class Cmd {
     public static final int DETAIL = 34;
     public static final int PING = 42;
     public static final int SERVER_MESSAGE = 45;
+    public static final int SERVER_INFO = 46;
     public static final int SKIP = 49;
     public static final int WIN = 50;
     public static final int UPDATE_HP = 51;
@@ -42,6 +45,8 @@ public final class Cmd {
     public static final int BOARD_NAME = 54;
     public static final int MAX_PLAYER = 56;
     public static final int TABLES = 64;
+    public static final int TRAINING = 83;
+    public static final int TILE = 92;
     public static final int CHOOSE_GUN = 69;
     public static final int CHOOSE_MAP = 70;
     public static final int CHANGE_TEAM = 71;
@@ -50,9 +55,11 @@ public final class Cmd {
     public static final int MAP_SELECT = 75;
     public static final int FIND_PLAYER = 78;
     public static final int FILE = 90;
+    public static final int HIDE_MAIL = 91;
     public static final int CHAR_INFO = 99;
     public static final int SHOP_EQUIP = 103;
     public static final int UPDATE_MONEY = 105;
+    public static final int MATERIAL = 126;
     public static final int BIG_IMAGE = 120;
     public static final int BIG_IMAGE_HD = 136;
     public static final int CHAT_TEAM = 123;
@@ -64,6 +71,7 @@ public final class Cmd {
     public static final int SHOP_CLAN = 244;
     public static final int MISSION = 233;
     public static final int AGENT = 230;
+    public static final int TRAINING_MAP = 250;
 
     private Cmd() {
     }

@@ -6,15 +6,9 @@ package conzy.server.database;
 import conzy.server.item.Item;
 import conzy.server.map.GameMap;
 import conzy.server.monster.Monster;
-import conzy.server.network.Bytes;
 import conzy.server.skill.Skill;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import org.json.JSONArray;
-import org.json.JSONObject;
-import org.json.JSONTokener;
 
 public final class Database {
     public static final int BASE_HP = 1000;
@@ -30,7 +24,6 @@ public final class Database {
     private final List<GameMap> maps = new ArrayList<>();
 
     private Database() {
-        load();
     }
 
     public static Database get() {
@@ -57,25 +50,25 @@ public final class Database {
         return maps;
     }
 
-    public byte[] mapValues() {
-        return Bytes.out(out -> {
-            out.writeByte(maps.size());
-            for (GameMap map : maps) {
-                byte[] terrain = map.terrain == null ? new byte[0] : map.terrain;
-                out.writeByte(map.id);
-                out.writeShort(terrain.length);
-                out.write(terrain);
-                for (int i = 0; i < 5; i++) {
-                    short value = map.values != null && i < map.values.length ? map.values[i] : 0;
-                    out.writeShort(value);
-                }
-                out.writeUTF(map.name);
-                out.writeUTF(map.fileName == null ? "" : map.fileName);
-            }
-        });
-    }
+//    public byte[] mapValues() { // tạm ẩn code để viết lại giá trị map tránh bị clear gc full cpu
+//        return Bytes.out(out -> {
+//            out.writeByte(maps.size());
+//            for (GameMap map : maps) {
+//                byte[] terrain = map.terrain == null ? new byte[0] : map.terrain;
+//                out.writeByte(map.id);
+//                out.writeShort(terrain.length);
+//                out.write(terrain);
+//                for (int i = 0; i < 5; i++) {
+//                    short value = map.values != null && i < map.values.length ? map.values[i] : 0;
+//                    out.writeShort(value);
+//                }
+//                out.writeUTF(map.name);
+//                out.writeUTF(map.fileName == null ? "" : map.fileName);
+//            }
+//        });
+//    }
 
-    public Item item(int id) {
+    public Item item(int id) {// tìm item
         for (Item item : items) {
             if (item.id == id) {
                 return item;
@@ -84,37 +77,20 @@ public final class Database {
         return null;
     }
 
-    private void load() {
-        try (InputStream in = Database.class.getResourceAsStream("/data/catalog.json")) {
-            if (in == null) {
-                throw new IllegalStateException("missing /data/catalog.json");
-            }
-            String text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-            JSONObject root = new JSONObject(new JSONTokener(text));
-            JSONArray itemArr = root.getJSONArray("items");
-            for (int i = 0; i < itemArr.length(); i++) {
-                JSONObject row = itemArr.getJSONObject(i);
-                Item item = new Item(
-                    row.getInt("id"),
-                    row.getString("name"),
-                    row.getInt("maxUsed"),
-                    row.getBoolean("free"),
-                    row.optBoolean("slot")
-                );
+    public void load() {
+        items.clear();
+        skills.clear();
+        monsters.clear();
+        ranks.clear();
+        try {
+            for (Item item : PlayerDB.get().catalogItems()) {
                 items.add(item);
                 if (!item.slot) {
                     skills.add(new Skill(item.id, item.name));
                 }
             }
-            JSONArray bosses = root.getJSONArray("bosses");
-            for (int i = 0; i < bosses.length(); i++) {
-                JSONObject row = bosses.getJSONObject(i);
-                monsters.add(new Monster(row.getInt("id"), row.getString("const")));
-            }
-            JSONArray rankArr = root.getJSONArray("ranks");
-            for (int i = 0; i < rankArr.length(); i++) {
-                ranks.add(rankArr.getJSONObject(i).getString("name"));
-            }
+            monsters.addAll(PlayerDB.get().catalogBosses());
+            ranks.addAll(PlayerDB.get().catalogRanks());
         } catch (Exception e) {
             throw new IllegalStateException("catalog", e);
         }
